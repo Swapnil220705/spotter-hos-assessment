@@ -1,21 +1,25 @@
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
-from .hos_engine import HOSEvent, DutyStatus, format_location_remark
+from .hos_engine import HOSEvent, DutyStatus
 
 def partition_events_by_day(events: List[HOSEvent]) -> List[Dict[str, Any]]:
     """
     Takes a continuous chronological list of HOSEvents and partitions them
     into 24-hour calendar day buckets (00:00 to 24:00).
-    Ensures that event status totals for every day sum to exactly 24.0 hours.
+    Ensures that every calendar day from start date to end date is 100% covered
+    from 00:00 to 24:00 by explicit HOSEvents.
+    Summary status totals match the exact sum of day events, naturally equaling 24.0 hours.
     """
     if not events:
         return []
 
     # Find earliest start date and latest end date
-    start_date = events[0].start_time.date()
-    end_date = events[-1].end_time.date()
+    trip_start_dt = events[0].start_time
+    trip_end_dt = events[-1].end_time
 
-    # Step through each calendar day
+    start_date = trip_start_dt.date()
+    end_date = trip_end_dt.date()
+
     daily_logs = []
     current_day_date = start_date
     day_number = 1
@@ -34,8 +38,29 @@ def partition_events_by_day(events: List[HOSEvent]) -> List[Dict[str, Any]]:
         on_duty_hours = 0.0
         day_miles = 0.0
 
+        # 1. Fill Initial Pre-Trip Gap (00:00 to trip_start_dt) on Day 1
+        if current_day_date == start_date and trip_start_dt > day_start_dt:
+            pre_trip_hrs = (trip_start_dt - day_start_dt).total_seconds() / 3600.0
+            off_duty_hours += pre_trip_hrs
+            day_events.append({
+                "status": DutyStatus.OFF,
+                "start_time": "00:00",
+                "end_time": trip_start_dt.strftime("%H:%M"),
+                "duration_hours": round(pre_trip_hrs, 2),
+                "location": events[0].location_name,
+                "description": "Initial Off Duty",
+                "miles_driven": 0.0
+            })
+            day_remarks.append({
+                "time": "00:00",
+                "location": events[0].location_name,
+                "status": DutyStatus.OFF,
+                "note": "Initial Off Duty",
+                "miles": 0.0
+            })
+
+        # 2. Slice Overlapping Trip Events for this Calendar Day
         for ev in events:
-            # Check overlap between event [ev.start_time, ev.end_time] and day [day_start_dt, day_end_dt]
             overlap_start = max(ev.start_time, day_start_dt)
             overlap_end = min(ev.end_time, day_end_dt)
 
@@ -67,7 +92,7 @@ def partition_events_by_day(events: List[HOSEvent]) -> List[Dict[str, Any]]:
                     "miles_driven": round(proportional_miles, 1)
                 })
 
-                # Record remark if status change occurs on this day
+                # Record remark for event start OR 00:00 midnight continuation
                 if overlap_start == ev.start_time:
                     day_remarks.append({
                         "time": overlap_start.strftime("%H:%M"),
@@ -76,38 +101,43 @@ def partition_events_by_day(events: List[HOSEvent]) -> List[Dict[str, Any]]:
                         "note": ev.description,
                         "miles": round(proportional_miles, 1)
                     })
+                elif overlap_start == day_start_dt:
+                    day_remarks.append({
+                        "time": "00:00",
+                        "location": ev.location_name,
+                        "status": ev.status,
+                        "note": f"Continuing {ev.status} ({ev.description})",
+                        "miles": round(proportional_miles, 1)
+                    })
 
-        # If a day has no events explicitly (e.g. initial off-duty before trip starts), fill with OFF duty
-        if not day_events:
-            off_duty_hours = 24.0
+        # 3. Fill Final Post-Trip Gap (trip_end_dt to 24:00) on Final Day
+        if current_day_date == end_date and trip_end_dt < day_end_dt:
+            post_trip_hrs = (day_end_dt - trip_end_dt).total_seconds() / 3600.0
+            off_duty_hours += post_trip_hrs
             day_events.append({
                 "status": DutyStatus.OFF,
-                "start_time": "00:00",
+                "start_time": trip_end_dt.strftime("%H:%M"),
                 "end_time": "24:00",
-                "duration_hours": 24.0,
-                "location": events[0].location_name if events else "Home Terminal",
-                "description": "Off Duty",
+                "duration_hours": round(post_trip_hrs, 2),
+                "location": events[-1].location_name,
+                "description": "Post-Trip Off Duty",
                 "miles_driven": 0.0
             })
             day_remarks.append({
-                "time": "00:00",
-                "location": events[0].location_name if events else "Home Terminal",
+                "time": trip_end_dt.strftime("%H:%M"),
+                "location": events[-1].location_name,
                 "status": DutyStatus.OFF,
-                "note": "Off Duty All Day",
+                "note": "Post-Trip Off Duty",
                 "miles": 0.0
             })
 
-        # Normalize and round total hours so their sum equals exactly 24.0
+        # Calculate exact rounded totals from actual day events
         off_duty_hours = round(off_duty_hours, 2)
         sleeper_berth_hours = round(sleeper_berth_hours, 2)
         driving_hours = round(driving_hours, 2)
         on_duty_hours = round(on_duty_hours, 2)
 
-        total_sum = off_duty_hours + sleeper_berth_hours + driving_hours + on_duty_hours
-        diff = round(24.0 - total_sum, 2)
-        if abs(diff) > 0.0:
-            # Adjust largest component or off-duty to maintain exact 24.0 balance
-            off_duty_hours = round(off_duty_hours + diff, 2)
+        total_day_hours = round(off_duty_hours + sleeper_berth_hours + driving_hours + on_duty_hours, 2)
 
         daily_logs.append({
             "day_number": day_number,
@@ -118,7 +148,7 @@ def partition_events_by_day(events: List[HOSEvent]) -> List[Dict[str, Any]]:
                 "sleeper_berth": sleeper_berth_hours,
                 "driving": driving_hours,
                 "on_duty": on_duty_hours,
-                "total": 24.0
+                "total": total_day_hours
             },
             "events": day_events,
             "remarks": day_remarks

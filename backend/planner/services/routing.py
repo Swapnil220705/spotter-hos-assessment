@@ -27,13 +27,14 @@ def interpolate_points(coord1: Tuple[float, float], coord2: Tuple[float, float],
 def get_route_segment(origin: Dict[str, Any], destination: Dict[str, Any]) -> Dict[str, Any]:
     """
     Fetches driving distance, duration, and geometry polyline for a single segment (A to B) using OSRM.
-    Falls back to Haversine calculation if API is offline.
+    Uses actual OSRM duration_seconds converted to hours.
+    Falls back to Haversine calculation at 55 mph if OSRM API is offline or unavailable.
     """
     lat1, lng1 = origin["lat"], origin["lng"]
     lat2, lng2 = destination["lat"], destination["lng"]
-    
+
     url = f"http://router.project-osrm.org/route/v1/driving/{lng1},{lat1};{lng2},{lat2}?overview=full&geometries=geojson"
-    
+
     try:
         response = requests.get(url, timeout=6)
         if response.status_code == 200:
@@ -43,14 +44,20 @@ def get_route_segment(origin: Dict[str, Any], destination: Dict[str, Any]) -> Di
                 distance_meters = route.get("distance", 0)
                 duration_seconds = route.get("duration", 0)
                 geometry = route.get("geometry", {}).get("coordinates", [])
-                
+
                 # OSRM returns coordinates as [lng, lat], convert to [lat, lng]
                 lat_lng_coords = [[coord[1], coord[0]] for coord in geometry]
-                
+
                 distance_miles = distance_meters * 0.000621371
-                # Standard commercial truck speed model: ~55 mph average
-                driving_hours = distance_miles / 55.0 if distance_miles > 0 else 0
-                
+
+                # Use actual OSRM duration in hours when available
+                if duration_seconds > 0:
+                    driving_hours = duration_seconds / 3600.0
+                elif distance_miles > 0:
+                    driving_hours = distance_miles / 55.0
+                else:
+                    driving_hours = 0.0
+
                 return {
                     "distance_miles": round(distance_miles, 1),
                     "duration_hours": round(driving_hours, 2),
@@ -58,13 +65,13 @@ def get_route_segment(origin: Dict[str, Any], destination: Dict[str, Any]) -> Di
                 }
     except Exception:
         pass
-        
-    # Fallback routing calculation
+
+    # Fallback routing calculation (when OSRM is offline)
     direct_dist = haversine_distance_miles(lat1, lng1, lat2, lng2)
     road_dist = round(direct_dist * 1.25, 1)  # Estimate 1.25x road circuity factor
     driving_hours = round(road_dist / 55.0, 2) if road_dist > 0 else 0.0
     coords = interpolate_points((lat1, lng1), (lat2, lng2), num_points=30)
-    
+
     return {
         "distance_miles": road_dist,
         "duration_hours": driving_hours,
