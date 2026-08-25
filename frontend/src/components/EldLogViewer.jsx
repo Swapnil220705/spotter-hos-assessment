@@ -1,8 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Calendar, FileText, Printer } from 'lucide-react';
 
 export default function EldLogViewer({ dailyLogs }) {
   const [selectedDayIdx, setSelectedDayIdx] = useState(0);
+
+  // Reset active day tab to Day 1 (index 0) whenever dailyLogs dataset changes
+  useEffect(() => {
+    setSelectedDayIdx(0);
+  }, [dailyLogs]);
 
   if (!dailyLogs || dailyLogs.length === 0) return null;
 

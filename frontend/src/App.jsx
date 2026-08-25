@@ -28,6 +28,7 @@ export default function App() {
       const data = await fetchPlanTrip(params);
       setTripData(data);
     } catch (err) {
+      setTripData(null);
       setError(err.message || 'Failed to calculate trip route and HOS schedule.');
     } finally {
       setLoading(false);

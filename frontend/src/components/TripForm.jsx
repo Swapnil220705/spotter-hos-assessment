@@ -1,25 +1,43 @@
 import { useState } from 'react';
-import { Navigation, Play, Zap } from 'lucide-react';
+import { Navigation, Play, Zap, AlertCircle } from 'lucide-react';
 
 export default function TripForm({ onSubmit, loading }) {
   const [currentLocation, setCurrentLocation] = useState('Chicago, IL');
   const [pickupLocation, setPickupLocation] = useState('Indianapolis, IN');
   const [dropoffLocation, setDropoffLocation] = useState('Dallas, TX');
   const [currentCycleUsed, setCurrentCycleUsed] = useState('15');
+  const [validationError, setValidationError] = useState(null);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!currentLocation || !pickupLocation || !dropoffLocation) return;
-    
+    setValidationError(null);
+
+    const current = currentLocation.trim();
+    const pickup = pickupLocation.trim();
+    const dropoff = dropoffLocation.trim();
+
+    if (!current || !pickup || !dropoff) {
+      setValidationError('Please enter valid, non-empty locations for all fields.');
+      return;
+    }
+
+    const cycleNum = parseFloat(currentCycleUsed);
+    if (isNaN(cycleNum) || cycleNum < 0 || cycleNum > 70) {
+      setValidationError('Current Cycle Used must be a number between 0 and 70 hours.');
+      return;
+    }
+
     onSubmit({
-      current_location: currentLocation,
-      pickup_location: pickupLocation,
-      dropoff_location: dropoffLocation,
-      current_cycle_used: parseFloat(currentCycleUsed) || 0
+      current_location: current,
+      pickup_location: pickup,
+      dropoff_location: dropoff,
+      current_cycle_used: cycleNum
     });
   };
 
   const loadPreset = (current, pickup, dropoff, cycle) => {
+    if (loading) return;
+    setValidationError(null);
     setCurrentLocation(current);
     setPickupLocation(pickup);
     setDropoffLocation(dropoff);
@@ -39,6 +57,7 @@ export default function TripForm({ onSubmit, loading }) {
           <button 
             type="button" 
             className="btn-preset"
+            disabled={loading}
             onClick={() => loadPreset('Chicago, IL', 'Chicago, IL', 'Indianapolis, IN', 10)}
           >
             <Zap size={12} style={{ display: 'inline', marginRight: '4px' }} />
@@ -47,6 +66,7 @@ export default function TripForm({ onSubmit, loading }) {
           <button 
             type="button" 
             className="btn-preset"
+            disabled={loading}
             onClick={() => loadPreset('Chicago, IL', 'Indianapolis, IN', 'Dallas, TX', 15)}
           >
             <Zap size={12} style={{ display: 'inline', marginRight: '4px' }} />
@@ -55,6 +75,7 @@ export default function TripForm({ onSubmit, loading }) {
           <button 
             type="button" 
             className="btn-preset"
+            disabled={loading}
             onClick={() => loadPreset('New York, NY', 'Atlanta, GA', 'Los Angeles, CA', 45)}
           >
             <Zap size={12} style={{ display: 'inline', marginRight: '4px' }} />
@@ -62,6 +83,13 @@ export default function TripForm({ onSubmit, loading }) {
           </button>
         </div>
       </div>
+
+      {validationError && (
+        <div className="error-banner" style={{ marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+          <AlertCircle size={16} style={{ display: 'inline', marginRight: '6px' }} />
+          {validationError}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div className="form-group">
@@ -72,7 +100,11 @@ export default function TripForm({ onSubmit, loading }) {
             className="form-input"
             placeholder="e.g. Chicago, IL"
             value={currentLocation}
-            onChange={(e) => setCurrentLocation(e.target.value)}
+            onChange={(e) => {
+              setValidationError(null);
+              setCurrentLocation(e.target.value);
+            }}
+            disabled={loading}
             required
           />
         </div>
@@ -85,7 +117,11 @@ export default function TripForm({ onSubmit, loading }) {
             className="form-input"
             placeholder="e.g. Indianapolis, IN"
             value={pickupLocation}
-            onChange={(e) => setPickupLocation(e.target.value)}
+            onChange={(e) => {
+              setValidationError(null);
+              setPickupLocation(e.target.value);
+            }}
+            disabled={loading}
             required
           />
         </div>
@@ -98,7 +134,11 @@ export default function TripForm({ onSubmit, loading }) {
             className="form-input"
             placeholder="e.g. Dallas, TX"
             value={dropoffLocation}
-            onChange={(e) => setDropoffLocation(e.target.value)}
+            onChange={(e) => {
+              setValidationError(null);
+              setDropoffLocation(e.target.value);
+            }}
+            disabled={loading}
             required
           />
         </div>
@@ -114,7 +154,11 @@ export default function TripForm({ onSubmit, loading }) {
             className="form-input"
             placeholder="0 to 70"
             value={currentCycleUsed}
-            onChange={(e) => setCurrentCycleUsed(e.target.value)}
+            onChange={(e) => {
+              setValidationError(null);
+              setCurrentCycleUsed(e.target.value);
+            }}
+            disabled={loading}
             required
           />
         </div>
