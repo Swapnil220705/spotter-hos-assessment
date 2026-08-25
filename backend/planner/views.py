@@ -50,61 +50,68 @@ def plan_trip(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # 1. Geocode Locations
-    origin_geo = geocode_location(current_loc_str)
-    pickup_geo = geocode_location(pickup_loc_str)
-    dropoff_geo = geocode_location(dropoff_loc_str)
+    try:
+        # 1. Geocode Locations
+        origin_geo = geocode_location(current_loc_str)
+        pickup_geo = geocode_location(pickup_loc_str)
+        dropoff_geo = geocode_location(dropoff_loc_str)
 
-    # 2. Get Route Data (OSRM)
-    seg1 = get_route_segment(origin_geo, pickup_geo)
-    seg2 = get_route_segment(pickup_geo, dropoff_geo)
+        # 2. Get Route Data (OSRM)
+        seg1 = get_route_segment(origin_geo, pickup_geo)
+        seg2 = get_route_segment(pickup_geo, dropoff_geo)
 
-    # 3. Run HOS Scheduler Engine
-    scheduler = HOSScheduler(
-        current_location=origin_geo,
-        pickup_location=pickup_geo,
-        dropoff_location=dropoff_geo,
-        current_cycle_used=current_cycle_used
-    )
-    events = scheduler.generate_schedule(seg1, seg2)
+        # 3. Run HOS Scheduler Engine
+        scheduler = HOSScheduler(
+            current_location=origin_geo,
+            pickup_location=pickup_geo,
+            dropoff_location=dropoff_geo,
+            current_cycle_used=current_cycle_used
+        )
+        events = scheduler.generate_schedule(seg1, seg2)
 
-    # 4. Partition Events by 24h Calendar Days
-    daily_logs = partition_events_by_day(events)
+        # 4. Partition Events by 24h Calendar Days
+        daily_logs = partition_events_by_day(events)
 
-    # Combine polyline coordinates for map
-    combined_coords = seg1.get("coordinates", []) + seg2.get("coordinates", [])
+        # Combine polyline coordinates for map
+        combined_coords = seg1.get("coordinates", []) + seg2.get("coordinates", [])
 
-    # Format route waypoints for map markers
-    waypoints_data = [
-        {
-            "type": wp.waypoint_type,
-            "name": wp.name,
-            "lat": wp.lat,
-            "lng": wp.lng,
-            "time": wp.time_str
-        }
-        for wp in scheduler.waypoints
-    ]
+        # Format route waypoints for map markers
+        waypoints_data = [
+            {
+                "type": wp.waypoint_type,
+                "name": wp.name,
+                "lat": wp.lat,
+                "lng": wp.lng,
+                "time": wp.time_str
+            }
+            for wp in scheduler.waypoints
+        ]
 
-    total_distance = round(seg1.get("distance_miles", 0.0) + seg2.get("distance_miles", 0.0), 1)
-    total_driving_hours = round(sum(ev.duration_hours for ev in events if ev.status == DutyStatus.D), 2)
-    total_on_duty_hours = round(sum(ev.duration_hours for ev in events if ev.status == DutyStatus.ON), 2)
-    total_rest_hours = round(sum(ev.duration_hours for ev in events if ev.status == DutyStatus.OFF), 2)
-    total_elapsed_hours = round(sum(ev.duration_hours for ev in events), 2)
+        total_distance = round(seg1.get("distance_miles", 0.0) + seg2.get("distance_miles", 0.0), 1)
+        total_driving_hours = round(sum(ev.duration_hours for ev in events if ev.status == DutyStatus.D), 2)
+        total_on_duty_hours = round(sum(ev.duration_hours for ev in events if ev.status == DutyStatus.ON), 2)
+        total_rest_hours = round(sum(ev.duration_hours for ev in events if ev.status == DutyStatus.OFF), 2)
+        total_elapsed_hours = round(sum(ev.duration_hours for ev in events), 2)
 
-    return Response({
-        "status": "success",
-        "summary": {
-            "total_distance_miles": total_distance,
-            "total_driving_hours": total_driving_hours,
-            "total_on_duty_hours": total_on_duty_hours,
-            "total_rest_hours": total_rest_hours,
-            "total_trip_hours": total_elapsed_hours,
-            "total_days": len(daily_logs)
-        },
-        "route": {
-            "coordinates": combined_coords,
-            "waypoints": waypoints_data
-        },
-        "daily_logs": daily_logs
-    }, status=status.HTTP_200_OK)
+        return Response({
+            "status": "success",
+            "summary": {
+                "total_distance_miles": total_distance,
+                "total_driving_hours": total_driving_hours,
+                "total_on_duty_hours": total_on_duty_hours,
+                "total_rest_hours": total_rest_hours,
+                "total_trip_hours": total_elapsed_hours,
+                "total_days": len(daily_logs)
+            },
+            "route": {
+                "coordinates": combined_coords,
+                "waypoints": waypoints_data
+            },
+            "daily_logs": daily_logs
+        }, status=status.HTTP_200_OK)
+
+    except Exception:
+        return Response(
+            {"error": "An internal server error occurred while processing the trip plan."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

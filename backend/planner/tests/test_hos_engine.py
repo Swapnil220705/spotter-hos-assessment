@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import patch
 from datetime import datetime, timedelta
 from rest_framework.test import APIClient
 from planner.services.hos_engine import HOSScheduler, DutyStatus
@@ -557,3 +558,92 @@ def test_api_integration_behavior():
     assert "daily_logs" in res_data
     assert len(res_data["daily_logs"]) >= 1
     assert len(res_data["route"]["waypoints"]) >= 2
+
+
+@pytest.mark.django_db
+def test_api_validation_missing_required_fields():
+    """21. API returns 400 when required location fields are missing."""
+    client = APIClient()
+
+    response = client.post(
+        "/api/plan-trip/",
+        {
+            "current_location": "Chicago, IL",
+            "pickup_location": "",
+            "dropoff_location": "Dallas, TX",
+            "current_cycle_used": 10.0
+        },
+        format="json"
+    )
+
+    assert response.status_code == 400
+    res_data = response.json()
+    assert "error" in res_data
+    assert "Missing required fields" in res_data["error"]
+
+
+@pytest.mark.django_db
+def test_api_validation_negative_cycle_used():
+    """22. API returns 400 when current_cycle_used is negative."""
+    client = APIClient()
+
+    response = client.post(
+        "/api/plan-trip/",
+        {
+            "current_location": "Chicago, IL",
+            "pickup_location": "Indianapolis, IN",
+            "dropoff_location": "Dallas, TX",
+            "current_cycle_used": -5.0
+        },
+        format="json"
+    )
+
+    assert response.status_code == 400
+    res_data = response.json()
+    assert "error" in res_data
+    assert "Invalid current_cycle_used" in res_data["error"]
+
+
+@pytest.mark.django_db
+def test_api_validation_excessive_cycle_used():
+    """23. API returns 400 when current_cycle_used exceeds 70 hours."""
+    client = APIClient()
+
+    response = client.post(
+        "/api/plan-trip/",
+        {
+            "current_location": "Chicago, IL",
+            "pickup_location": "Indianapolis, IN",
+            "dropoff_location": "Dallas, TX",
+            "current_cycle_used": 75.0
+        },
+        format="json"
+    )
+
+    assert response.status_code == 400
+    res_data = response.json()
+    assert "error" in res_data
+    assert "Invalid current_cycle_used" in res_data["error"]
+
+
+@pytest.mark.django_db
+def test_api_500_internal_error_handling():
+    """24. API returns structured JSON 500 response when unexpected server exception occurs."""
+    client = APIClient()
+
+    with patch("planner.views.geocode_location", side_effect=Exception("Simulated geocode service crash")):
+        response = client.post(
+            "/api/plan-trip/",
+            {
+                "current_location": "Chicago, IL",
+                "pickup_location": "Indianapolis, IN",
+                "dropoff_location": "Dallas, TX",
+                "current_cycle_used": 15.0
+            },
+            format="json"
+        )
+
+    assert response.status_code == 500
+    res_data = response.json()
+    assert "error" in res_data
+    assert "internal server error" in res_data["error"].lower()
