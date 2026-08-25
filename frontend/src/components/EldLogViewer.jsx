@@ -89,20 +89,20 @@ export default function EldLogViewer({ dailyLogs }) {
 
   return (
     <div className="eld-container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+      <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <h2 className="panel-title" style={{ margin: 0 }}>
           <FileText size={20} className="text-primary" />
           Driver's Daily Log (ELD Sheet)
         </h2>
 
-        <button type="button" className="btn-preset" onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <button type="button" className="btn-preset no-print" onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <Printer size={14} />
           Print Log Sheet
         </button>
       </div>
 
       {/* Multi-Day Pagination Tabs */}
-      <div className="tabs-header">
+      <div className="tabs-header no-print">
         {dailyLogs.map((log, idx) => (
           <button
             key={idx}
