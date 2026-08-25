@@ -1,122 +1,94 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState, useEffect } from 'react';
+import { Truck, ShieldCheck, MapPin, AlertCircle } from 'lucide-react';
+import TripForm from './components/TripForm';
+import TripSummary from './components/TripSummary';
+import RouteMap from './components/RouteMap';
+import EldLogViewer from './components/EldLogViewer';
+import { fetchPlanTrip } from './services/api';
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [tripData, setTripData] = useState(null);
+
+  // Auto-load default trip on mount
+  useEffect(() => {
+    handlePlanTrip({
+      current_location: 'Chicago, IL',
+      pickup_location: 'Indianapolis, IN',
+      dropoff_location: 'Dallas, TX',
+      current_cycle_used: 15
+    });
+  }, []);
+
+  const handlePlanTrip = async (params) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchPlanTrip(params);
+      setTripData(data);
+    } catch (err) {
+      setError(err.message || 'Failed to calculate trip route and HOS schedule.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <div className="app-container">
+      {/* Header Bar */}
+      <header className="app-header">
+        <div className="logo-group">
+          <div className="logo-icon">
+            <Truck size={24} />
+          </div>
+          <div>
+            <h1 className="app-title">Spotter AI HOS & Route Planner</h1>
+            <p className="app-subtitle">FMCSA Property Carrier Hours of Service & ELD Log Generator</p>
+          </div>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--success)', fontSize: '0.85rem', fontWeight: 600 }}>
+          <ShieldCheck size={18} />
+          FMCSA April 2022 Compliant
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      {/* Main Grid */}
+      <main className="main-layout">
+        {/* Left Column: Input Form */}
+        <aside>
+          <TripForm onSubmit={handlePlanTrip} loading={loading} />
+        </aside>
+
+        {/* Right Column: Route Map, Metrics & ELD Logs */}
+        <section>
+          {error && (
+            <div className="error-banner">
+              <AlertCircle size={18} style={{ display: 'inline', marginRight: '6px' }} />
+              {error}
+            </div>
+          )}
+
+          {tripData && (
+            <>
+              <TripSummary summary={tripData.summary} />
+              
+              <div className="glass-panel" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
+                <h3 className="panel-title" style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>
+                  <MapPin size={18} className="text-primary" />
+                  Route Map & Planned Stop Waypoints
+                </h3>
+                <RouteMap route={tripData.route} />
+              </div>
+
+              <div className="glass-panel">
+                <EldLogViewer dailyLogs={tripData.daily_logs} />
+              </div>
+            </>
+          )}
+        </section>
+      </main>
+    </div>
+  );
 }
-
-export default App
