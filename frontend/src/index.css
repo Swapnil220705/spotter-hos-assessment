@@ -40,6 +40,7 @@ body {
   color: var(--text-main);
   line-height: 1.5;
   min-height: 100vh;
+  overflow-x: hidden;
   background-image:
     radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.09) 0px, transparent 50%),
     radial-gradient(at 100% 100%, rgba(99, 102, 241, 0.09) 0px, transparent 50%);
@@ -113,6 +114,12 @@ header.app-header {
   grid-template-columns: 370px 1fr;
   gap: 1.25rem;
   align-items: start;
+}
+
+/* Prevent grid children from overflowing their cells */
+.main-layout > aside,
+.main-layout > section {
+  min-width: 0;
 }
 
 /* ─────────────────────────────────────
@@ -367,6 +374,7 @@ header.app-header {
 .map-wrapper {
   height: 440px;
   width: 100%;
+  max-width: 100%;
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--border-color);
@@ -431,6 +439,8 @@ header.app-header {
   border-radius: var(--radius-md);
   font-family: 'Inter', sans-serif;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  overflow-x: auto; /* Contain ELD graph horizontal scroll within this element */
+  max-width: 100%;
 }
 
 .eld-header-table {
