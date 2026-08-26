@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch
 from datetime import datetime, timedelta
 from rest_framework.test import APIClient
-from planner.services.hos_engine import HOSScheduler, DutyStatus
+from planner.services.hos_engine import HOSScheduler, DutyStatus, interpolate_polyline_coordinate
 from planner.services.log_partitioner import partition_events_by_day
 
 
@@ -647,3 +647,62 @@ def test_api_500_internal_error_handling():
     res_data = response.json()
     assert "error" in res_data
     assert "internal server error" in res_data["error"].lower()
+
+
+def test_straight_line_geometry_snapping():
+    """25. Interpolates halfway along a straight-line polyline geometry."""
+    coords = [[40.0, -80.0], [42.0, -80.0]]
+    lat, lng = interpolate_polyline_coordinate(coords, 0.5)
+    assert abs(lat - 41.0) < 0.001
+    assert abs(lng - (-80.0)) < 0.001
+
+
+def test_curved_geometry_snapping():
+    """26. Snaps to polyline vertex on a curved polyline instead of straight-line endpoint interpolation."""
+    # Symmetric curve: start at (-10.0, 0.0), curve peak at (0.0, 10.0), end at (10.0, 0.0)
+    coords = [[-10.0, 0.0], [0.0, 10.0], [10.0, 0.0]]
+    lat, lng = interpolate_polyline_coordinate(coords, 0.5)
+    # Vertex is at (0.0, 10.0). Linear endpoint interpolation between (-10, 0) and (10, 0) would give (0.0, 0.0).
+    assert abs(lat - 0.0) < 0.001
+    assert abs(lng - 10.0) < 0.001
+
+
+def test_empty_geometry_fallback():
+    """27. Falls back to straight-line interpolation between start_loc and end_loc when geometry is missing."""
+    start_loc = {"lat": 40.0, "lng": -90.0}
+    end_loc = {"lat": 50.0, "lng": -90.0}
+
+    lat, lng = interpolate_polyline_coordinate([], 0.5, start_loc, end_loc)
+    assert abs(lat - 45.0) < 0.001
+    assert abs(lng - (-90.0)) < 0.001
+
+    lat2, lng2 = interpolate_polyline_coordinate(None, 0.5, start_loc, end_loc)
+    assert abs(lat2 - 45.0) < 0.001
+    assert abs(lng2 - (-90.0)) < 0.001
+
+
+def test_generated_stop_uses_route_geometry(sample_locations):
+    """28. Generated HOS 30m break stop waypoint uses route polyline geometry coordinates."""
+    scheduler = HOSScheduler(
+        current_location=sample_locations["chicago"],
+        pickup_location=sample_locations["chicago"],
+        dropoff_location=sample_locations["dallas"],
+        current_cycle_used=0.0,
+        start_datetime=datetime(2026, 8, 25, 8, 0)
+    )
+
+    curved_coords = [[-10.0, 0.0], [0.0, 10.0], [10.0, 0.0]]
+    seg1 = {"distance_miles": 0.0, "duration_hours": 0.0, "coordinates": []}
+    seg2 = {"distance_miles": 500.0, "duration_hours": 10.0, "coordinates": curved_coords}
+
+    scheduler.generate_schedule(seg1, seg2)
+
+    break_waypoints = [wp for wp in scheduler.waypoints if wp.waypoint_type == "REST_30M"]
+    assert len(break_waypoints) >= 1
+
+    break_wp = break_waypoints[0]
+    # 8h break occurs at 80% of the 10h segment.
+    # 80% along curved_coords (-10,0 -> 0,10 -> 10,0) puts it on segment 2 of the curve (lat > 0, lng > 0)
+    # If endpoint linear interpolation had been used, lat would be -10 + 0.8 * 20 = +6.0, lng would be 0.0.
+    # With curve snapping, lng is > 0 on segment 2.
+    assert break_wp.lng > 0.0

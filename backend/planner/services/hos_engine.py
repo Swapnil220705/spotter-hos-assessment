@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
+from .routing import haversine_distance_miles
 
 class DutyStatus:
     OFF = "OFF"     # Off Duty
@@ -37,6 +38,60 @@ def format_location_remark(event: HOSEvent) -> Dict[str, Any]:
         "note": event.description,
         "miles": round(event.miles_driven, 1)
     }
+
+def interpolate_polyline_coordinate(
+    coordinates: List[List[float]],
+    fraction: float,
+    start_loc: Dict[str, Any] = None,
+    end_loc: Dict[str, Any] = None
+) -> Tuple[float, float]:
+    """
+    Interpolates a [lat, lng] coordinate along a polyline geometry at a given distance fraction (0.0 to 1.0).
+    Uses cumulative Haversine distance along the polyline.
+    Falls back to straight-line interpolation between start_loc and end_loc if coordinates is empty or invalid.
+    """
+    fraction = max(0.0, min(1.0, fraction))
+
+    if not coordinates or len(coordinates) < 2:
+        if start_loc and end_loc:
+            start_lat, start_lng = start_loc["lat"], start_loc["lng"]
+            end_lat, end_lng = end_loc["lat"], end_loc["lng"]
+            lat = start_lat + (end_lat - start_lat) * fraction
+            lng = start_lng + (end_lng - start_lng) * fraction
+            return (lat, lng)
+        return (0.0, 0.0)
+
+    if fraction <= 0.0:
+        return (coordinates[0][0], coordinates[0][1])
+    if fraction >= 1.0:
+        return (coordinates[-1][0], coordinates[-1][1])
+
+    segment_lengths = []
+    total_length = 0.0
+    for i in range(len(coordinates) - 1):
+        p1 = coordinates[i]
+        p2 = coordinates[i + 1]
+        dist = haversine_distance_miles(p1[0], p1[1], p2[0], p2[1])
+        segment_lengths.append(dist)
+        total_length += dist
+
+    if total_length <= 0.0001:
+        return (coordinates[0][0], coordinates[0][1])
+
+    target_dist = fraction * total_length
+    accumulated_dist = 0.0
+
+    for i, seg_len in enumerate(segment_lengths):
+        if accumulated_dist + seg_len >= target_dist:
+            seg_fraction = (target_dist - accumulated_dist) / seg_len if seg_len > 0 else 0.0
+            p1 = coordinates[i]
+            p2 = coordinates[i + 1]
+            lat = p1[0] + (p2[0] - p1[0]) * seg_fraction
+            lng = p1[1] + (p2[1] - p1[1]) * seg_fraction
+            return (lat, lng)
+        accumulated_dist += seg_len
+
+    return (coordinates[-1][0], coordinates[-1][1])
 
 class HOSScheduler:
     """
@@ -252,7 +307,8 @@ class HOSScheduler:
         segment_duration_hours: float,
         start_loc: Dict[str, Any],
         end_loc: Dict[str, Any],
-        segment_description: str
+        segment_description: str,
+        coordinates: List[List[float]] = None
     ):
         """Simulates driving along a segment while enforcing all driving constraints."""
         if segment_miles <= 0 or segment_duration_hours <= 0:
@@ -261,9 +317,6 @@ class HOSScheduler:
         effective_speed = segment_miles / segment_duration_hours
         remaining_miles = segment_miles
         remaining_hours = segment_duration_hours
-
-        start_lat, start_lng = start_loc["lat"], start_loc["lng"]
-        end_lat, end_lng = end_loc["lat"], end_loc["lng"]
 
         while remaining_miles > 0.001 or remaining_hours > 0.001:
             shift_elapsed = (self.current_time - self.shift_start_time).total_seconds() / 3600.0
@@ -293,8 +346,12 @@ class HOSScheduler:
                 # Interpolate intermediate position along segment
                 miles_completed = segment_miles - remaining_miles + step_miles
                 fraction = min(1.0, miles_completed / segment_miles) if segment_miles > 0 else 1.0
-                curr_lat = start_lat + (end_lat - start_lat) * fraction
-                curr_lng = start_lng + (end_lng - start_lng) * fraction
+                curr_lat, curr_lng = interpolate_polyline_coordinate(
+                    coordinates=coordinates,
+                    fraction=fraction,
+                    start_loc=start_loc,
+                    end_loc=end_loc
+                )
 
                 self._add_event(
                     status=DutyStatus.D,
@@ -316,8 +373,12 @@ class HOSScheduler:
             # If more driving remains for this segment, handle the constraint that was hit
             if remaining_miles > 0.001 or remaining_hours > 0.001:
                 fraction = min(1.0, (segment_miles - remaining_miles) / segment_miles) if segment_miles > 0 else 0.0
-                curr_lat = start_lat + (end_lat - start_lat) * fraction
-                curr_lng = start_lng + (end_lng - start_lng) * fraction
+                curr_lat, curr_lng = interpolate_polyline_coordinate(
+                    coordinates=coordinates,
+                    fraction=fraction,
+                    start_loc=start_loc,
+                    end_loc=end_loc
+                )
 
                 # Evaluate constraints in priority order:
                 # 1. 70-Hour Cycle Exhaustion -> 34h Restart
@@ -363,13 +424,15 @@ class HOSScheduler:
         # 2. Drive Segment 1: Origin -> Pickup
         seg1_miles = segment1_route.get("distance_miles", 0.0)
         seg1_hours = segment1_route.get("duration_hours", 0.0)
+        seg1_coords = segment1_route.get("coordinates", [])
         if seg1_miles > 0 and seg1_hours > 0:
             self._simulate_driving_segment(
                 segment_miles=seg1_miles,
                 segment_duration_hours=seg1_hours,
                 start_loc=self.origin,
                 end_loc=self.pickup,
-                segment_description=f"to {self.pickup['name']}"
+                segment_description=f"to {self.pickup['name']}",
+                coordinates=seg1_coords
             )
 
         # 3. Arrive at Pickup Location & Execute 1.0 Hour ON DUTY Pickup Work
@@ -383,13 +446,15 @@ class HOSScheduler:
         # 4. Drive Segment 2: Pickup -> Dropoff
         seg2_miles = segment2_route.get("distance_miles", 0.0)
         seg2_hours = segment2_route.get("duration_hours", 0.0)
+        seg2_coords = segment2_route.get("coordinates", [])
         if seg2_miles > 0 and seg2_hours > 0:
             self._simulate_driving_segment(
                 segment_miles=seg2_miles,
                 segment_duration_hours=seg2_hours,
                 start_loc=self.pickup,
                 end_loc=self.dropoff,
-                segment_description=f"to {self.dropoff['name']}"
+                segment_description=f"to {self.dropoff['name']}",
+                coordinates=seg2_coords
             )
 
         # 5. Arrive at Dropoff Location & Execute 1.0 Hour ON DUTY Dropoff Work
