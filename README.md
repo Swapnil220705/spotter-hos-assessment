@@ -10,6 +10,7 @@ The application plans truck routes, schedules driver duty statuses according to 
 - Python
 - Django
 - Django REST Framework
+- Gunicorn / WhiteNoise
 - Pytest
 - OpenStreetMap Nominatim for geocoding
 - OSRM for road routing
@@ -43,15 +44,32 @@ The application plans truck routes, schedules driver duty statuses according to 
 - Multi-day ELD navigation
 - Printable ELD log sheets
 
-## Environment Variables & Configuration
+## Production Deployment Configuration
 
-The backend supports the following environment variables with safe local development defaults:
+### Environment Variables
 
-| Variable | Description | Default Value |
-| :--- | :--- | :--- |
-| `DJANGO_SECRET_KEY` | Secret key used for cryptographic signing | `django-insecure-...` |
-| `DJANGO_DEBUG` | Enable/disable Django debug mode | `True` |
-| `DJANGO_ALLOWED_HOSTS` | Comma-separated list of allowed host domains | `*` |
+| Variable | Description | Default Value | Target |
+| :--- | :--- | :--- | :--- |
+| `DJANGO_SECRET_KEY` | Cryptographic secret key | `django-insecure-...` | Backend |
+| `DJANGO_DEBUG` | Django debug mode flag | `True` | Backend |
+| `DJANGO_ALLOWED_HOSTS` | Comma-separated allowed host domains | `*` | Backend |
+| `DJANGO_CORS_ALLOWED_ORIGINS` | Comma-separated allowed CORS origins | *(empty = allow all)* | Backend |
+| `VITE_API_URL` | Base API endpoint URL | `http://localhost:8000/api` | Frontend |
+
+### Production Commands
+
+- **Backend Start Command**:
+  ```bash
+  gunicorn spotter_hos.wsgi:application --bind 0.0.0.0:$PORT
+  ```
+- **Static Files Collection**:
+  ```bash
+  python manage.py collectstatic --noinput
+  ```
+- **Frontend Build**:
+  ```bash
+  npm run build
+  ```
 
 ## API Endpoints
 
@@ -120,5 +138,6 @@ spotter-hos-assessment/
 │
 ├── AGENTS.md
 ├── README.md
+├── render.yaml
 └── .gitignore
 ```
