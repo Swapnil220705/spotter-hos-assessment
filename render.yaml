@@ -2,6 +2,7 @@ services:
   - type: web
     name: spotter-hos-backend
     env: python
+    plan: free
     buildCommand: cd backend && pip install -r requirements.txt && python manage.py collectstatic --noinput
     startCommand: cd backend && gunicorn spotter_hos.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120
     envVars:
