@@ -10,6 +10,12 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [tripData, setTripData] = useState(null);
+  const [metaData, setMetaData] = useState({
+    driver_name: '',
+    carrier_name: '',
+    truck_number: '',
+    trailer_number: ''
+  });
 
   // Auto-load default trip on mount
   useEffect(() => {
@@ -24,11 +30,32 @@ export default function App() {
   const handlePlanTrip = async (params) => {
     setLoading(true);
     setError(null);
+
+    const {
+      driver_name = '',
+      carrier_name = '',
+      truck_number = '',
+      trailer_number = '',
+      ...apiParams
+    } = params;
+
     try {
-      const data = await fetchPlanTrip(params);
+      const data = await fetchPlanTrip(apiParams);
       setTripData(data);
+      setMetaData({
+        driver_name: (driver_name || '').trim(),
+        carrier_name: (carrier_name || '').trim(),
+        truck_number: (truck_number || '').trim(),
+        trailer_number: (trailer_number || '').trim()
+      });
     } catch (err) {
       setTripData(null);
+      setMetaData({
+        driver_name: '',
+        carrier_name: '',
+        truck_number: '',
+        trailer_number: ''
+      });
       setError(err.message || 'Failed to calculate trip route and HOS schedule.');
     } finally {
       setLoading(false);
@@ -84,7 +111,7 @@ export default function App() {
               </div>
 
               <div className="glass-panel">
-                <EldLogViewer dailyLogs={tripData.daily_logs} />
+                <EldLogViewer dailyLogs={tripData.daily_logs} metaData={metaData} />
               </div>
             </>
           )}

@@ -6,6 +6,13 @@ export default function TripForm({ onSubmit, loading }) {
   const [pickupLocation, setPickupLocation] = useState('Indianapolis, IN');
   const [dropoffLocation, setDropoffLocation] = useState('Dallas, TX');
   const [currentCycleUsed, setCurrentCycleUsed] = useState('15');
+
+  // Optional ELD Header Metadata
+  const [driverName, setDriverName] = useState('');
+  const [carrierName, setCarrierName] = useState('');
+  const [truckNumber, setTruckNumber] = useState('');
+  const [trailerNumber, setTrailerNumber] = useState('');
+
   const [validationError, setValidationError] = useState(null);
 
   const handleSubmit = (e) => {
@@ -31,7 +38,11 @@ export default function TripForm({ onSubmit, loading }) {
       current_location: current,
       pickup_location: pickup,
       dropoff_location: dropoff,
-      current_cycle_used: cycleNum
+      current_cycle_used: cycleNum,
+      driver_name: driverName.trim(),
+      carrier_name: carrierName.trim(),
+      truck_number: truckNumber.trim(),
+      trailer_number: trailerNumber.trim()
     });
   };
 
@@ -161,6 +172,69 @@ export default function TripForm({ onSubmit, loading }) {
             disabled={loading}
             required
           />
+        </div>
+
+        {/* Optional ELD Log Header Metadata Section */}
+        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', marginTop: '1.25rem', marginBottom: '1.25rem' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+            Driver & Carrier Metadata (Optional)
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" htmlFor="driver_name">Driver Name</label>
+              <input
+                id="driver_name"
+                type="text"
+                className="form-input"
+                placeholder="e.g. John Smith"
+                value={driverName}
+                onChange={(e) => setDriverName(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" htmlFor="carrier_name">Carrier Name</label>
+              <input
+                id="carrier_name"
+                type="text"
+                className="form-input"
+                placeholder="e.g. Spotter Logistics"
+                value={carrierName}
+                onChange={(e) => setCarrierName(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" htmlFor="truck_number">Truck #</label>
+              <input
+                id="truck_number"
+                type="text"
+                className="form-input"
+                placeholder="e.g. TRK-104"
+                value={truckNumber}
+                onChange={(e) => setTruckNumber(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" htmlFor="trailer_number">Trailer #</label>
+              <input
+                id="trailer_number"
+                type="text"
+                className="form-input"
+                placeholder="e.g. TRL-882"
+                value={trailerNumber}
+                onChange={(e) => setTrailerNumber(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+          </div>
         </div>
 
         <button type="submit" className="btn-submit" disabled={loading}>

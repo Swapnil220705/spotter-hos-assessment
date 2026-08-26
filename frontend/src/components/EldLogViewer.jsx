@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Calendar, FileText, Printer } from 'lucide-react';
 
-export default function EldLogViewer({ dailyLogs }) {
+export default function EldLogViewer({ dailyLogs, metaData }) {
   const [selectedDayIdx, setSelectedDayIdx] = useState(0);
 
   // Reset active day tab to Day 1 (index 0) whenever dailyLogs dataset changes
@@ -15,6 +15,17 @@ export default function EldLogViewer({ dailyLogs }) {
   const summary = currentLog.summary || { off_duty: 24, sleeper_berth: 0, driving: 0, on_duty: 0 };
   const events = currentLog.events || [];
   const remarks = currentLog.remarks || [];
+
+  // Default ELD Header Values preserved from existing component
+  const DEFAULT_DRIVER = "Property Carrier Driver (ID: DRV-7712)";
+  const DEFAULT_CARRIER = "Spotter AI Freight Logistics • 100 Tech Way, San Francisco, CA";
+  const DEFAULT_TRUCK = "TRK-104";
+  const DEFAULT_TRAILER = "TRL-882";
+
+  const driverName = metaData?.driver_name?.trim() || DEFAULT_DRIVER;
+  const carrierName = metaData?.carrier_name?.trim() || DEFAULT_CARRIER;
+  const truckNumber = metaData?.truck_number?.trim() || DEFAULT_TRUCK;
+  const trailerNumber = metaData?.trailer_number?.trim() || DEFAULT_TRAILER;
 
   const handlePrint = () => {
     window.print();
@@ -141,17 +152,17 @@ export default function EldLogViewer({ dailyLogs }) {
               </td>
               <td>
                 <div className="eld-header-label">Truck / Tractor #</div>
-                <strong>TRK-104</strong>
+                <strong>{truckNumber}</strong>
               </td>
               <td>
                 <div className="eld-header-label">Trailer #</div>
-                <strong>TRL-882</strong>
+                <strong>{trailerNumber}</strong>
               </td>
             </tr>
             <tr>
               <td colSpan={2}>
                 <div className="eld-header-label">Carrier Name & Main Office Address</div>
-                <strong>Spotter AI Freight Logistics • 100 Tech Way, San Francisco, CA</strong>
+                <strong>{carrierName}</strong>
               </td>
               <td colSpan={2}>
                 <div className="eld-header-label">Shipping Doc / Manifest #</div>
@@ -161,7 +172,7 @@ export default function EldLogViewer({ dailyLogs }) {
             <tr>
               <td colSpan={2}>
                 <div className="eld-header-label">Driver Name & ID</div>
-                <strong>Property Carrier Driver (ID: DRV-7712)</strong>
+                <strong>{driverName}</strong>
               </td>
               <td colSpan={2}>
                 <div className="eld-header-label">Home Terminal Address</div>
