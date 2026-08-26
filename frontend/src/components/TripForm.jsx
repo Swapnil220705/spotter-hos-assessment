@@ -175,12 +175,10 @@ export default function TripForm({ onSubmit, loading }) {
         </div>
 
         {/* Optional ELD Log Header Metadata Section */}
-        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', marginTop: '1.25rem', marginBottom: '1.25rem' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-            Driver & Carrier Metadata (Optional)
-          </div>
+        <div className="form-section-divider">
+          <div className="form-section-label">Driver &amp; Carrier Metadata (Optional)</div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.6rem' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" htmlFor="driver_name">Driver Name</label>
               <input
@@ -191,6 +189,7 @@ export default function TripForm({ onSubmit, loading }) {
                 value={driverName}
                 onChange={(e) => setDriverName(e.target.value)}
                 disabled={loading}
+                autoComplete="name"
               />
             </div>
 
@@ -204,11 +203,12 @@ export default function TripForm({ onSubmit, loading }) {
                 value={carrierName}
                 onChange={(e) => setCarrierName(e.target.value)}
                 disabled={loading}
+                autoComplete="organization"
               />
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" htmlFor="truck_number">Truck #</label>
               <input
@@ -237,13 +237,18 @@ export default function TripForm({ onSubmit, loading }) {
           </div>
         </div>
 
-        <button type="submit" className="btn-submit" disabled={loading}>
+        <button
+          type="submit"
+          className="btn-submit"
+          disabled={loading}
+          aria-label={loading ? 'Processing route and HOS schedule' : 'Calculate route and generate ELD logs'}
+        >
           {loading ? (
-            <span>Processing Route & HOS...</span>
+            <span>Processing Route &amp; HOS...</span>
           ) : (
             <>
-              <Play size={18} />
-              Calculate Route & ELD Logs
+              <Play size={18} aria-hidden="true" />
+              Calculate Route &amp; ELD Logs
             </>
           )}
         </button>

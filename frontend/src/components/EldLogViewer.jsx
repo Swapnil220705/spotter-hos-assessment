@@ -253,14 +253,7 @@ export default function EldLogViewer({ dailyLogs, metaData }) {
                 <tr key={idx}>
                   <td><strong>{rmk.time}</strong></td>
                   <td>
-                    <span style={{ 
-                      padding: '2px 6px', 
-                      borderRadius: '4px', 
-                      fontSize: '11px',
-                      fontWeight: 'bold',
-                      background: rmk.status === 'D' ? '#dbeafe' : rmk.status === 'ON' ? '#fef3c7' : '#f3f4f6',
-                      color: rmk.status === 'D' ? '#1e40af' : rmk.status === 'ON' ? '#92400e' : '#374151'
-                    }}>
+                    <span className={`status-badge status-badge-${rmk.status}`}>
                       {rmk.status}
                     </span>
                   </td>
