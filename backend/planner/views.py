@@ -1,3 +1,4 @@
+import logging
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
@@ -8,14 +9,16 @@ from .services.routing import get_route_segment
 from .services.hos_engine import HOSScheduler, DutyStatus
 from .services.log_partitioner import partition_events_by_day
 
+logger = logging.getLogger(__name__)
+
 @api_view(['GET'])
 def health_check(request):
     """Health check endpoint to verify backend service status."""
     return Response({
-        "status": "healthy",
+        "status": "ok",
         "service": "Spotter HOS Planner API",
         "version": "1.0.0"
-    })
+    }, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
 def plan_trip(request):
@@ -110,7 +113,8 @@ def plan_trip(request):
             "daily_logs": daily_logs
         }, status=status.HTTP_200_OK)
 
-    except Exception:
+    except Exception as exc:
+        logger.exception("Unexpected error while calculating trip plan: %s", exc)
         return Response(
             {"error": "An internal server error occurred while processing the trip plan."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

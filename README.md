@@ -26,8 +26,9 @@ The application plans truck routes, schedules driver duty statuses according to 
 
 - Current location, pickup location, and dropoff location inputs
 - Current 70-hour / 8-day cycle usage input
+- Optional customizable ELD metadata (Driver Name, Carrier Name, Truck #, Trailer #)
 - Route planning using OSRM
-- OpenStreetMap interactive route map
+- OpenStreetMap interactive route map with polyline geometry snapping
 - Planned pickup, dropoff, fuel, break, and rest waypoints
 - HOS-aware trip scheduling
 - Multi-day trip planning
@@ -41,6 +42,21 @@ The application plans truck routes, schedules driver duty statuses according to 
 - Location and activity remarks
 - Multi-day ELD navigation
 - Printable ELD log sheets
+
+## Environment Variables & Configuration
+
+The backend supports the following environment variables with safe local development defaults:
+
+| Variable | Description | Default Value |
+| :--- | :--- | :--- |
+| `DJANGO_SECRET_KEY` | Secret key used for cryptographic signing | `django-insecure-...` |
+| `DJANGO_DEBUG` | Enable/disable Django debug mode | `True` |
+| `DJANGO_ALLOWED_HOSTS` | Comma-separated list of allowed host domains | `*` |
+
+## API Endpoints
+
+- `GET /api/health/` — Health check endpoint returning `{"status": "ok"}`
+- `POST /api/plan-trip/` — Main trip planning & ELD daily log generation endpoint
 
 ## HOS Rules Implemented
 
@@ -77,7 +93,9 @@ spotter-hos-assessment/
 │   │   │   ├── log_partitioner.py
 │   │   │   └── routing.py
 │   │   ├── tests/
-│   │   │   └── test_hos_engine.py
+│   │   │   ├── test_api_health.py
+│   │   │   ├── test_hos_engine.py
+│   │   │   └── test_routing_geocoding.py
 │   │   ├── views.py
 │   │   └── urls.py
 │   ├── spotter_hos/
@@ -103,3 +121,4 @@ spotter-hos-assessment/
 ├── AGENTS.md
 ├── README.md
 └── .gitignore
+```
