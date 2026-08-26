@@ -706,3 +706,142 @@ def test_generated_stop_uses_route_geometry(sample_locations):
     # If endpoint linear interpolation had been used, lat would be -10 + 0.8 * 20 = +6.0, lng would be 0.0.
     # With curve snapping, lng is > 0 on segment 2.
     assert break_wp.lng > 0.0
+
+
+def test_zero_distance_trip_timeline(sample_locations):
+    """29. Zero-distance trip (Origin == Pickup == Dropoff) generates valid timeline with no driving."""
+    scheduler = HOSScheduler(
+        current_location=sample_locations["chicago"],
+        pickup_location=sample_locations["chicago"],
+        dropoff_location=sample_locations["chicago"],
+        current_cycle_used=10.0,
+        start_datetime=datetime(2026, 8, 25, 8, 0)
+    )
+
+    seg1 = {"distance_miles": 0.0, "duration_hours": 0.0}
+    seg2 = {"distance_miles": 0.0, "duration_hours": 0.0}
+
+    events = scheduler.generate_schedule(seg1, seg2)
+
+    # Must contain 0 driving events
+    drive_events = [ev for ev in events if ev.status == DutyStatus.D]
+    assert len(drive_events) == 0
+
+    # Must contain Pickup (1h ON) and Dropoff (1h ON)
+    on_events = [ev for ev in events if ev.status == DutyStatus.ON]
+    assert len(on_events) == 2
+    assert "Pickup" in on_events[0].description
+    assert "Dropoff" in on_events[1].description
+
+    # Daily log partitioning must yield exactly 24.0 hours for Day 1
+    daily_logs = partition_events_by_day(events)
+    assert len(daily_logs) == 1
+    summary = daily_logs[0]["summary"]
+    total = summary["off_duty"] + summary["sleeper_berth"] + summary["driving"] + summary["on_duty"]
+    assert round(total, 2) == 24.0
+
+
+def test_very_long_trip_multiple_34h_restarts(sample_locations):
+    """30. Multi-thousand mile trip triggering multiple 34h cycle restarts completes chronologically."""
+    scheduler = HOSScheduler(
+        current_location=sample_locations["chicago"],
+        pickup_location=sample_locations["chicago"],
+        dropoff_location=sample_locations["los_angeles"],
+        current_cycle_used=65.0,
+        start_datetime=datetime(2026, 8, 25, 8, 0)
+    )
+
+    # 9,000 miles, ~150 hours of driving to ensure multiple 70-hour cycle exhaustions
+    seg1 = {"distance_miles": 0.0, "duration_hours": 0.0}
+    seg2 = {"distance_miles": 9000.0, "duration_hours": 150.0}
+
+    events = scheduler.generate_schedule(seg1, seg2)
+
+    restart_events = [ev for ev in events if "34-Hour" in ev.description]
+    assert len(restart_events) >= 2
+
+    # Verify strict monotonic timestamp ordering across all events
+    for i in range(1, len(events)):
+        assert events[i].start_time >= events[i - 1].end_time
+
+    # Verify daily log partitioning covers all days with exact 24.0h summaries
+    daily_logs = partition_events_by_day(events)
+    assert len(daily_logs) >= 8
+    for log in daily_logs:
+        summary = log["summary"]
+        total = summary["off_duty"] + summary["sleeper_berth"] + summary["driving"] + summary["on_duty"]
+        assert round(total, 2) == 24.0
+
+
+def test_zero_distance_trip_with_initial_cycle_restart(sample_locations):
+    """31. Zero-distance trip starting with 70.0h cycle used inserts initial 34h restart then pickup/dropoff."""
+    scheduler = HOSScheduler(
+        current_location=sample_locations["chicago"],
+        pickup_location=sample_locations["chicago"],
+        dropoff_location=sample_locations["chicago"],
+        current_cycle_used=70.0,
+        start_datetime=datetime(2026, 8, 25, 8, 0)
+    )
+
+    seg1 = {"distance_miles": 0.0, "duration_hours": 0.0}
+    seg2 = {"distance_miles": 0.0, "duration_hours": 0.0}
+
+    events = scheduler.generate_schedule(seg1, seg2)
+
+    assert events[0].status == DutyStatus.OFF
+    assert events[0].duration_hours == 34.0
+    assert "34-Hour" in events[0].description
+
+    daily_logs = partition_events_by_day(events)
+    for log in daily_logs:
+        summary = log["summary"]
+        total = summary["off_duty"] + summary["sleeper_berth"] + summary["driving"] + summary["on_duty"]
+        assert round(total, 2) == 24.0
+
+
+@pytest.mark.django_db
+def test_api_zero_distance_same_location():
+    """32. API successfully handles zero-distance trip where origin, pickup, and dropoff are identical."""
+    client = APIClient()
+
+    response = client.post(
+        "/api/plan-trip/",
+        {
+            "current_location": "Chicago, IL",
+            "pickup_location": "Chicago, IL",
+            "dropoff_location": "Chicago, IL",
+            "current_cycle_used": 10.0
+        },
+        format="json"
+    )
+
+    assert response.status_code == 200
+    res_data = response.json()
+    assert res_data["status"] == "success"
+    assert res_data["summary"]["total_driving_hours"] == 0.0
+    assert len(res_data["daily_logs"]) >= 1
+    summary = res_data["daily_logs"][0]["summary"]
+    total = summary["off_duty"] + summary["sleeper_berth"] + summary["driving"] + summary["on_duty"]
+    assert round(total, 2) == 24.0
+
+
+@pytest.mark.django_db
+def test_api_exact_max_cycle_used_boundary():
+    """33. API successfully handles boundary current_cycle_used = 70.0 hours by triggering 34h restart."""
+    client = APIClient()
+
+    response = client.post(
+        "/api/plan-trip/",
+        {
+            "current_location": "Chicago, IL",
+            "pickup_location": "Indianapolis, IN",
+            "dropoff_location": "Dallas, TX",
+            "current_cycle_used": 70.0
+        },
+        format="json"
+    )
+
+    assert response.status_code == 200
+    res_data = response.json()
+    assert res_data["status"] == "success"
+    assert len(res_data["daily_logs"]) >= 2
