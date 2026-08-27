@@ -1,5 +1,6 @@
+import threading
+import time
 import requests
-from functools import lru_cache
 from typing import Dict, Any, List
 
 # Fallback coordinates for common assessment test locations to ensure reliability
@@ -62,17 +63,46 @@ def geocode_location(query: str) -> Dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Nominatim autocomplete suggestion infrastructure
+# ---------------------------------------------------------------------------
+
 _NOMINATIM_HEADERS = {"User-Agent": "SpotterHOSPlanner/1.0 (assessment@spotter.ai)"}
 _SUGGESTION_MIN_LENGTH = 3
 _SUGGESTION_LIMIT = 5
+_NOMINATIM_MIN_INTERVAL = 1.0  # seconds — Nominatim public policy: max 1 req/s
+
+# A single lock serializes all outgoing Nominatim suggestion requests so that
+# no two requests leave this process less than _NOMINATIM_MIN_INTERVAL apart,
+# and so that concurrent identical queries only produce one HTTP call.
+_nominatim_lock = threading.Lock()
+
+# Explicit bounded dict cache (replaces @lru_cache so we can share it cleanly
+# with the lock-based double-check pattern below).
+_suggestion_cache: Dict[str, List[Dict[str, Any]]] = {}
+_CACHE_MAX_SIZE = 32
+
+# Monotonic timestamp of the most recent outgoing Nominatim request.
+# 0.0 means "never called" — the first call will see elapsed = now - 0 which
+# is always >= _NOMINATIM_MIN_INTERVAL in practice, so no initial sleep occurs.
+_last_nominatim_time: float = 0.0
 
 
-@lru_cache(maxsize=32)
-def _cached_suggest(query_lower: str) -> List[Dict[str, Any]]:
+def _reset_rate_limiter() -> None:
     """
-    Internal cached call to Nominatim /search for autocomplete suggestions.
-    Cached by lowercased query so repeated identical strings hit the cache.
-    Returns a list of normalized suggestion dicts (may be empty on error).
+    Reset limiter and cache state. Intended for test isolation only.
+    Not part of the production API.
+    """
+    global _last_nominatim_time
+    with _nominatim_lock:
+        _last_nominatim_time = 0.0
+        _suggestion_cache.clear()
+
+
+def _fetch_from_nominatim(query_lower: str) -> List[Dict[str, Any]]:
+    """
+    Perform the actual Nominatim HTTP request and normalize the response.
+    Must only be called while holding _nominatim_lock.
     """
     url = (
         "https://nominatim.openstreetmap.org/search"
@@ -116,11 +146,56 @@ def _cached_suggest(query_lower: str) -> List[Dict[str, Any]]:
         return []
 
 
+def _cached_suggest(query_lower: str) -> List[Dict[str, Any]]:
+    """
+    Return autocomplete suggestions for query_lower.
+
+    Rate-limiting and deduplication strategy:
+    1. Fast-path cache check (no lock) — serves already-cached queries instantly.
+    2. Acquire the shared lock — this serializes all concurrent callers who had
+       a cache miss, ensuring at most one Nominatim request is in-flight at a time.
+    3. Double-check cache inside the lock — if two threads raced in with the same
+       query, the second one finds the result the first one already stored.
+    4. Enforce the 1-second minimum interval between outgoing Nominatim requests —
+       sleep for the remaining gap if the previous request was < 1s ago.
+    5. Make the HTTP request, store in cache, update the timestamp.
+    """
+    global _last_nominatim_time
+
+    # 1. Fast-path: serve from cache without acquiring the lock
+    if query_lower in _suggestion_cache:
+        return _suggestion_cache[query_lower]
+
+    # 2. Acquire the shared lock — all Nominatim calls are serialized here
+    with _nominatim_lock:
+        # 3. Double-check cache: another thread may have populated it while we waited
+        if query_lower in _suggestion_cache:
+            return _suggestion_cache[query_lower]
+
+        # 4. Enforce ≥ 1 second between outgoing Nominatim requests
+        elapsed = time.monotonic() - _last_nominatim_time
+        if elapsed < _NOMINATIM_MIN_INTERVAL:
+            time.sleep(_NOMINATIM_MIN_INTERVAL - elapsed)
+
+        # 5. Make the request and record the timestamp
+        result = _fetch_from_nominatim(query_lower)
+        _last_nominatim_time = time.monotonic()
+
+        # Store in bounded cache; evict oldest insertion on overflow
+        if len(_suggestion_cache) >= _CACHE_MAX_SIZE:
+            oldest_key = next(iter(_suggestion_cache))
+            del _suggestion_cache[oldest_key]
+        _suggestion_cache[query_lower] = result
+
+        return result
+
+
 def suggest_locations(query: str) -> List[Dict[str, Any]]:
     """
     Returns up to 5 US location suggestions for the given query string.
     Returns an empty list if the query is too short or Nominatim is unavailable.
-    Identical queries are served from an in-process LRU cache.
+    Identical queries are served from an in-process cache.
+    Outgoing Nominatim requests are serialized and rate-limited to ≤ 1/second.
     """
     clean = query.strip()
     if len(clean) < _SUGGESTION_MIN_LENGTH:
