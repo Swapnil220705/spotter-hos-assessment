@@ -1,6 +1,6 @@
-# Spotter AI HOS & Route Planner
+# HOS & Route Planner
 
-A full-stack Hours of Service (HOS) and route planning application built for the Spotter AI Full Stack Developer assessment.
+Property-carrier Hours of Service scheduling and ELD log generation application built as a Full Stack Developer assessment for Spotter AI.
 
 The application accepts a current location, pickup location, dropoff location, and current cycle hours used, then produces a planned truck route, HOS-compliant trip schedule, interactive route map, and filled-out FMCSA-style Driver's Daily Log (ELD) sheets — including separate sheets for each calendar day when the trip spans multiple days.
 
@@ -10,10 +10,9 @@ The application accepts a current location, pickup location, dropoff location, a
 
 | | URL |
 |---|---|
-| **Frontend (Vercel)** | https://spotter-hos-assessment-theta.vercel.app/ |
+| **Live Demo (Vercel)** | https://spotter-hos-assessment-theta.vercel.app/ |
 | **Backend API (Render)** | https://spotter-hos-backend-86s1.onrender.com |
 | **Health Endpoint** | https://spotter-hos-backend-86s1.onrender.com/api/health/ |
-| **Demo Video** | To be added before submission |
 
 > **Note:** The backend runs on Render's free tier. The first request after a period of inactivity may take 30–60 seconds while the service wakes up. The loading overlay in the UI will remain visible during this time.
 
@@ -22,6 +21,7 @@ The application accepts a current location, pickup location, dropoff location, a
 ## Features
 
 - **Route Planning** — Geocodes addresses using Nominatim (OpenStreetMap) and routes using OSRM with road-distance-based stop positioning
+- **Location Autocomplete** — Real-time location search suggestions via backend proxy with debouncing (350ms), LRU caching, and 1 req/sec rate limiting
 - **HOS Scheduling Engine** — Chronological event-driven scheduler applying all FMCSA property-carrier rules
 - **Interactive Route Map** — OpenStreetMap/Leaflet map with distinct waypoint markers, polyline route, and legend
 - **Trip Event Timeline** — Visual event-by-event timeline of the entire scheduled trip
@@ -37,7 +37,7 @@ The application accepts a current location, pickup location, dropoff location, a
 
 ## HOS Rules Implemented
 
-Based on the FMCSA *Interstate Truck Driver's Guide to Hours of Service (April 2022)*, property-carrying driver rules:
+Based on the FMCSA *Interstate Truck Driver's Guide to Hours of Service (April 2022)* reference provided with the assessment:
 
 | Rule | Limit |
 |------|-------|
@@ -63,10 +63,11 @@ Browser (React/Vite)
     │
     │  POST /api/plan-trip/
     │  GET  /api/health/
+    │  GET  /api/location-suggestions/
     ▼
 Django REST Framework (Gunicorn + WhiteNoise)
     │
-    ├─ Geocoding Service  (Nominatim → coordinate fallback)
+    ├─ Geocoding Service  (Nominatim → rate-limited proxy & fallbacks)
     ├─ Routing Service    (OSRM → 55 mph duration fallback)
     ├─ HOS Engine         (event-driven chronological scheduler)
     └─ Log Partitioner    (splits events into 24-hour calendar days)
@@ -82,9 +83,9 @@ Django REST Framework (Gunicorn + WhiteNoise)
 - Python 3.11 / Django 5+ / Django REST Framework
 - Gunicorn (WSGI server)
 - WhiteNoise (static file serving)
-- OpenStreetMap Nominatim (geocoding)
+- OpenStreetMap Nominatim (geocoding & autocomplete proxy)
 - OSRM (road routing)
-- Pytest / pytest-django (45 tests)
+- Pytest / pytest-django (63 tests)
 
 ### Frontend
 - React 19 / Vite 8
@@ -145,6 +146,23 @@ Health check. Returns HTTP 200 when the service is running.
   "status": "ok",
   "service": "Spotter HOS Planner API",
   "version": "1.0.0"
+}
+```
+
+### `GET /api/location-suggestions/?q=<query>`
+
+Proxy endpoint for location autocomplete suggestions. Returns up to 5 US location suggestions for queries of 3+ characters.
+
+```json
+{
+  "suggestions": [
+    {
+      "display_name": "Chicago, Cook County, Illinois, United States",
+      "short_name": "Chicago, Illinois",
+      "lat": 41.8781,
+      "lng": -87.6298
+    }
+  ]
 }
 ```
 
@@ -238,7 +256,7 @@ The repository includes `render.yaml` configured for Render's free tier:
 cd backend && pip install -r requirements.txt && python manage.py collectstatic --noinput
 
 # Start command
-cd backend && gunicorn spotter_hos.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+cd backend && gunicorn spotter_hos.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --timeout 120
 ```
 
 ### Vercel Deployment
@@ -254,11 +272,12 @@ cd backend
 .\venv\Scripts\python.exe -m pytest -q
 ```
 
-**45 tests** covering:
+**63 tests** covering:
 - HOS engine: 11h limit, 14h window, 30-minute break, 10h rest, 70h cycle, 34h restart
 - Edge cases: zero-distance trips, approaching cycle limit, multiple restarts
 - Daily log partitioner: midnight event splitting, multi-day generation, correct hourly totals
 - Routing/geocoding resilience: OSRM failures, Nominatim failures, combined fallbacks
+- Location autocomplete: debouncing, rate limiting, cache hits, thread safety, endpoint validation
 - API validation: missing fields, invalid cycle values, blank locations
 - API health endpoint
 
@@ -280,13 +299,14 @@ spotter-hos-assessment/
 │   ├── pytest.ini
 │   ├── planner/
 │   │   ├── services/
-│   │   │   ├── geocoding.py       # Nominatim geocoding + fallback
+│   │   │   ├── geocoding.py       # Nominatim geocoding + autocomplete proxy & fallbacks
 │   │   │   ├── routing.py         # OSRM routing + fallback
 │   │   │   ├── hos_engine.py      # HOS scheduling engine
 │   │   │   └── log_partitioner.py # 24-hour ELD day partitioner
 │   │   ├── tests/
 │   │   │   ├── test_hos_engine.py
 │   │   │   ├── test_api_health.py
+│   │   │   ├── test_location_suggestions.py
 │   │   │   └── test_routing_geocoding.py
 │   │   ├── views.py               # API endpoints
 │   │   └── urls.py
@@ -296,7 +316,7 @@ spotter-hos-assessment/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── TripForm.jsx       # Input form with presets & metadata
+│   │   │   ├── TripForm.jsx       # Input form with autocomplete, presets & metadata
 │   │   │   ├── RouteMap.jsx       # Leaflet map with custom markers
 │   │   │   ├── EventTimeline.jsx  # HOS event timeline
 │   │   │   ├── TripSummary.jsx    # Summary metric cards

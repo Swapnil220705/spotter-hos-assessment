@@ -70,14 +70,14 @@ export default function App() {
             <Truck size={22} />
           </div>
           <div>
-            <h1 className="app-title">Spotter AI HOS &amp; Route Planner</h1>
-            <p className="app-subtitle">FMCSA Property Carrier Hours of Service &amp; ELD Log Generator</p>
+            <h1 className="app-title">HOS &amp; Route Planner</h1>
+            <p className="app-subtitle">Property-Carrier Hours of Service &amp; ELD Log Generator</p>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--success)', fontSize: '0.8rem', fontWeight: 600 }}>
           <ShieldCheck size={16} />
-          FMCSA April 2022 Compliant
+          70 hr / 8 day cycle · FMCSA HOS-based
         </div>
       </header>
 
@@ -150,6 +150,17 @@ export default function App() {
           )}
         </section>
       </main>
+
+      <footer style={{
+        textAlign: 'center',
+        padding: '0.75rem 1rem',
+        fontSize: '0.72rem',
+        color: 'var(--text-dim)',
+        borderTop: '1px solid var(--border-color)',
+        marginTop: '0.5rem'
+      }}>
+        Built as a Full Stack Developer assessment for Spotter AI.
+      </footer>
     </div>
   );
 }

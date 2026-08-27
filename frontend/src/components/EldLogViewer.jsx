@@ -18,7 +18,7 @@ export default function EldLogViewer({ dailyLogs, metaData }) {
 
   // Default ELD Header Values preserved from existing component
   const DEFAULT_DRIVER = "Property Carrier Driver (ID: DRV-7712)";
-  const DEFAULT_CARRIER = "Spotter AI Freight Logistics • 100 Tech Way, San Francisco, CA";
+  const DEFAULT_CARRIER = "Sample Freight Carrier • 100 Main St, Springfield, IL";
   const DEFAULT_TRUCK = "TRK-104";
   const DEFAULT_TRAILER = "TRL-882";
 
@@ -134,7 +134,7 @@ export default function EldLogViewer({ dailyLogs, metaData }) {
             DRIVER'S DAILY LOG (24 Hours)
           </h3>
           <span style={{ fontSize: '0.75rem', color: '#4b5563' }}>
-            Property-Carrying Vehicle • FMCSA Hours of Service Regulation Compliant
+            Property-Carrying Vehicle • HOS-based (FMCSA April 2022 Reference)
           </span>
         </div>
 
