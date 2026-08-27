@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from datetime import datetime
 
-from .services.geocoding import geocode_location
+from .services.geocoding import geocode_location, suggest_locations
 from .services.routing import get_route_segment
 from .services.hos_engine import HOSScheduler, DutyStatus
 from .services.log_partitioner import partition_events_by_day
@@ -19,6 +19,26 @@ def health_check(request):
         "service": "Spotter HOS Planner API",
         "version": "1.0.0"
     }, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+def location_suggestions(request):
+    """
+    Proxy endpoint for location autocomplete suggestions.
+    Calls Nominatim on behalf of the frontend so the client never
+    contacts Nominatim directly (which is against Nominatim's ToS for autocomplete).
+
+    GET /api/location-suggestions/?q=<query>
+
+    Returns up to 5 US location suggestions or 400 for missing/too-short query.
+    """
+    query = request.query_params.get("q", "").strip()
+    if len(query) < 3:
+        return Response(
+            {"error": "Query must be at least 3 characters.", "suggestions": []},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    suggestions = suggest_locations(query)
+    return Response({"suggestions": suggestions}, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
 def plan_trip(request):

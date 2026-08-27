@@ -1,5 +1,6 @@
 import requests
-from typing import Dict, Any
+from functools import lru_cache
+from typing import Dict, Any, List
 
 # Fallback coordinates for common assessment test locations to ensure reliability
 FALLBACK_LOCATIONS: Dict[str, Dict[str, Any]] = {
@@ -59,3 +60,69 @@ def geocode_location(query: str) -> Dict[str, Any]:
         "lat": 39.8283,  # Geographic center of USA
         "lng": -98.5795
     }
+
+
+_NOMINATIM_HEADERS = {"User-Agent": "SpotterHOSPlanner/1.0 (assessment@spotter.ai)"}
+_SUGGESTION_MIN_LENGTH = 3
+_SUGGESTION_LIMIT = 5
+
+
+@lru_cache(maxsize=32)
+def _cached_suggest(query_lower: str) -> List[Dict[str, Any]]:
+    """
+    Internal cached call to Nominatim /search for autocomplete suggestions.
+    Cached by lowercased query so repeated identical strings hit the cache.
+    Returns a list of normalized suggestion dicts (may be empty on error).
+    """
+    url = (
+        "https://nominatim.openstreetmap.org/search"
+        f"?q={requests.utils.quote(query_lower)}"
+        "&format=jsonv2"
+        "&addressdetails=1"
+        f"&limit={_SUGGESTION_LIMIT}"
+        "&countrycodes=us"
+    )
+    try:
+        response = requests.get(url, headers=_NOMINATIM_HEADERS, timeout=5)
+        if response.status_code != 200:
+            return []
+        data = response.json()
+        if not isinstance(data, list):
+            return []
+
+        suggestions = []
+        for item in data:
+            display = item.get("display_name", "")
+            if not display:
+                continue
+            # Build a shorter human-friendly label from address details
+            addr = item.get("address", {})
+            parts = []
+            for field in ("city", "town", "village", "county", "state"):
+                val = addr.get(field)
+                if val and val not in parts:
+                    parts.append(val)
+            short = ", ".join(parts) if parts else display.split(",")[0].strip()
+
+            suggestions.append({
+                "display_name": display,
+                "short_name": short,
+                "lat": float(item.get("lat", 0)),
+                "lng": float(item.get("lon", 0)),
+            })
+        return suggestions
+
+    except Exception:
+        return []
+
+
+def suggest_locations(query: str) -> List[Dict[str, Any]]:
+    """
+    Returns up to 5 US location suggestions for the given query string.
+    Returns an empty list if the query is too short or Nominatim is unavailable.
+    Identical queries are served from an in-process LRU cache.
+    """
+    clean = query.strip()
+    if len(clean) < _SUGGESTION_MIN_LENGTH:
+        return []
+    return _cached_suggest(clean.lower())
